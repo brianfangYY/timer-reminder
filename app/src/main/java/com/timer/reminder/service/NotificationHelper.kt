@@ -44,9 +44,13 @@ object NotificationHelper {
                 NotificationChannel(
                     CHANNEL_TOMATO,
                     "番茄钟",
-                    NotificationManager.IMPORTANCE_LOW
+                    NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     description = "番茄钟状态通知"
+                    setShowBadge(true)
+                    enableVibration(false)
+                    setSound(null, null)
+                    lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
                 },
                 NotificationChannel(
                     CHANNEL_ALARM,
