@@ -1,8 +1,9 @@
 package com.timer.reminder.ui.tomato
 
+import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioTrack
+import android.media.SoundPool
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -29,45 +30,39 @@ fun TomatoScreen(
     var showTaskInput by remember { mutableStateOf(false) }
     var taskInput by remember { mutableStateOf("") }
 
-    // Tick sound - generate a short click using AudioTrack
-    fun playTickSound() {
-        try {
-            val sampleRate = 44100
-            val durationMs = 50L
-            val numSamples = (sampleRate * durationMs / 1000).toInt()
-            val buffer = ShortArray(numSamples)
-            // Generate a short click waveform
-            for (i in 0 until numSamples) {
-                val t = i.toDouble() / sampleRate
-                // 800Hz sine wave with fast decay
-                val amplitude = (Short.MAX_VALUE * 0.6 * Math.exp(-t * 80.0)).toInt()
-                buffer[i] = (amplitude * Math.sin(2.0 * Math.PI * 800.0 * t)).toInt().toShort()
-            }
-            val track = AudioTrack(
+    val context = LocalContext.current
+
+    // Tick sound - use SoundPool with pre-loaded WAV
+    val soundPool = remember {
+        SoundPool.Builder()
+            .setMaxStreams(1)
+            .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
-                    .build(),
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build(),
-                numSamples * 2,
-                AudioTrack.MODE_STATIC,
-                sampleRate
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
             )
-            track.write(buffer, 0, numSamples)
-            track.play()
-            track.release()
-        } catch (e: Exception) {
-            // Silently ignore sound errors
+            .build()
+    }
+    val tickSoundId = remember {
+        soundPool.load(context, com.timer.reminder.R.raw.tick, 1)
+    }
+
+    // Clean up SoundPool when leaving screen
+    DisposableEffect(Unit) {
+        onDispose {
+            soundPool.release()
         }
     }
 
     // Collect tick events and play sound
     LaunchedEffect(Unit) {
         viewModel.tickEvent.collect {
-            playTickSound()
+            try {
+                soundPool.play(tickSoundId, 1.0f, 1.0f, 1, 0, 1.0f)
+            } catch (_: Exception) {
+                // Silently ignore sound errors
+            }
         }
     }
 

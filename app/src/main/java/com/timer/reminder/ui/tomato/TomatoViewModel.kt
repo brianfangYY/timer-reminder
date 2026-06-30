@@ -1,9 +1,12 @@
 package com.timer.reminder.ui.tomato
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.timer.reminder.data.local.entity.TomatoRecordEntity
 import com.timer.reminder.data.repository.TomatoRepository
+import com.timer.reminder.service.TomatoForegroundService
+import com.timer.reminder.service.TomatoStateHolder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -25,6 +28,7 @@ data class TomatoUiState(
 
 @HiltViewModel
 class TomatoViewModel @Inject constructor(
+    private val application: Application,
     private val tomatoRepository: TomatoRepository
 ) : ViewModel() {
 
@@ -44,26 +48,41 @@ class TomatoViewModel @Inject constructor(
         tomatoRepository.getCompletedCount().onEach { count ->
             _uiState.update { it.copy(totalCompleted = count) }
         }.launchIn(viewModelScope)
+
+        // Sync time from foreground service when it's running
+        viewModelScope.launch {
+            TomatoStateHolder.remainingSeconds.collect { serviceSeconds ->
+                if (serviceSeconds > 0 && TomatoStateHolder.isServiceRunning.value) {
+                    _uiState.update { it.copy(remainingSeconds = serviceSeconds.toInt()) }
+                }
+            }
+        }
     }
 
     fun startWork(taskDescription: String = "") {
+        val workSeconds = _uiState.value.workDuration * 60
         _uiState.update {
             it.copy(
                 state = TomatoState.WORKING,
-                remainingSeconds = it.workDuration * 60,
+                remainingSeconds = workSeconds,
                 currentSessionTask = taskDescription
             )
         }
+        // Start foreground service to show notification countdown
+        TomatoForegroundService.startService(application, workSeconds.toLong(), "focus")
         startTimer()
     }
 
     fun startBreak() {
+        val breakSeconds = _uiState.value.breakDuration * 60
         _uiState.update {
             it.copy(
                 state = TomatoState.BREAK,
-                remainingSeconds = it.breakDuration * 60
+                remainingSeconds = breakSeconds
             )
         }
+        // Start foreground service to show notification countdown
+        TomatoForegroundService.startService(application, breakSeconds.toLong(), "break")
         startTimer()
     }
 
@@ -71,6 +90,7 @@ class TomatoViewModel @Inject constructor(
         timerJob?.cancel()
         timerJob = null
         _uiState.update { it.copy(state = TomatoState.IDLE) }
+        TomatoForegroundService.stopService(application)
     }
 
     fun reset() {
@@ -82,9 +102,10 @@ class TomatoViewModel @Inject constructor(
                 remainingSeconds = it.workDuration * 60
             )
         }
+        TomatoForegroundService.stopService(application)
     }
 
-    fun startTimer() {
+    private fun startTimer() {
         timerJob?.cancel()
         timerJob = viewModelScope.launch {
             val startTime = System.currentTimeMillis()
@@ -93,7 +114,7 @@ class TomatoViewModel @Inject constructor(
                 val current = _uiState.value
 
                 // Emit tick event if sound is enabled
-                if (current.isTickSoundEnabled) {
+                if (current.isTickSoundEnabled && current.state != TomatoState.IDLE) {
                     _tickEvent.emit(Unit)
                 }
 
@@ -111,14 +132,12 @@ class TomatoViewModel @Inject constructor(
                                 taskDescription = current.currentSessionTask
                             )
                         )
-                        _uiState.update {
-                            it.copy(state = TomatoState.IDLE, remainingSeconds = 0)
-                        }
-                    } else {
-                        _uiState.update {
-                            it.copy(state = TomatoState.IDLE, remainingSeconds = 0)
-                        }
                     }
+                    _uiState.update {
+                        it.copy(state = TomatoState.IDLE, remainingSeconds = 0)
+                    }
+                    // Stop foreground service
+                    TomatoForegroundService.stopService(application)
                     break
                 }
                 _uiState.update { it.copy(remainingSeconds = newRemaining) }
@@ -142,5 +161,6 @@ class TomatoViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         timerJob?.cancel()
+        TomatoForegroundService.stopService(application)
     }
 }
