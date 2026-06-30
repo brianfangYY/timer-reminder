@@ -3,6 +3,8 @@ package com.timer.reminder.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.timer.reminder.R
@@ -20,6 +22,11 @@ object NotificationHelper {
 
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val alarmAudioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+
             val channels = listOf(
                 NotificationChannel(
                     CHANNEL_REMINDER,
@@ -27,6 +34,12 @@ object NotificationHelper {
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     description = "定时提醒通知"
+                    enableVibration(true)
+                    setSound(
+                        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                        alarmAudioAttributes
+                    )
+                    vibrationPattern = longArrayOf(0, 500, 300, 500)
                 },
                 NotificationChannel(
                     CHANNEL_TOMATO,
@@ -41,6 +54,12 @@ object NotificationHelper {
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     description = "闹钟响铃通知"
+                    enableVibration(true)
+                    setSound(
+                        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                        alarmAudioAttributes
+                    )
+                    vibrationPattern = longArrayOf(0, 500, 300, 500)
                 }
             )
 

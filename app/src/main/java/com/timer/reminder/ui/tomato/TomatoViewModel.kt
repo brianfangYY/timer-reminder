@@ -19,7 +19,8 @@ data class TomatoUiState(
     val workDuration: Int = 25,
     val breakDuration: Int = 5,
     val totalCompleted: Int = 0,
-    val currentSessionTask: String = ""
+    val currentSessionTask: String = "",
+    val isTickSoundEnabled: Boolean = false
 )
 
 @HiltViewModel
@@ -30,7 +31,14 @@ class TomatoViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(TomatoUiState())
     val uiState: StateFlow<TomatoUiState> = _uiState.asStateFlow()
 
+    private val _tickEvent = MutableSharedFlow<Unit>(replay = 0)
+    val tickEvent: SharedFlow<Unit> = _tickEvent.asSharedFlow()
+
     private var timerJob: Job? = null
+
+    fun toggleTickSound() {
+        _uiState.update { it.copy(isTickSoundEnabled = !it.isTickSoundEnabled) }
+    }
 
     init {
         tomatoRepository.getCompletedCount().onEach { count ->
@@ -76,13 +84,19 @@ class TomatoViewModel @Inject constructor(
         }
     }
 
-    private fun startTimer() {
+    fun startTimer() {
         timerJob?.cancel()
         timerJob = viewModelScope.launch {
             val startTime = System.currentTimeMillis()
             while (isActive) {
                 delay(1000L)
                 val current = _uiState.value
+
+                // Emit tick event if sound is enabled
+                if (current.isTickSoundEnabled) {
+                    _tickEvent.emit(Unit)
+                }
+
                 val newRemaining = current.remainingSeconds - 1
                 if (newRemaining <= 0) {
                     // Session complete

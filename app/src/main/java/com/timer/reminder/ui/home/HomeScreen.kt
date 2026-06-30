@@ -108,12 +108,6 @@ fun HomeScreen(
                     onClick = { navController.navigate("tomato") }
                 )
                 ActionChip(
-                    icon = Icons.Filled.Alarm,
-                    label = "闹钟",
-                    color = AlarmGold,
-                    onClick = { navController.navigate("alarm") }
-                )
-                ActionChip(
                     icon = Icons.Filled.CheckCircle,
                     label = "任务",
                     color = TaskGreen,

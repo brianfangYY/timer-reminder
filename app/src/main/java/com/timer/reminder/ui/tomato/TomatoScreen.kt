@@ -1,8 +1,10 @@
 package com.timer.reminder.ui.tomato
 
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -14,9 +16,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.timer.reminder.data.local.entity.TomatoRecordEntity
 import com.timer.reminder.ui.theme.*
 import com.timer.reminder.util.TimeUtils
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,6 +28,48 @@ fun TomatoScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showTaskInput by remember { mutableStateOf(false) }
     var taskInput by remember { mutableStateOf("") }
+
+    // Tick sound - generate a short click using AudioTrack
+    fun playTickSound() {
+        try {
+            val sampleRate = 44100
+            val durationMs = 50L
+            val numSamples = (sampleRate * durationMs / 1000).toInt()
+            val buffer = ShortArray(numSamples)
+            // Generate a short click waveform
+            for (i in 0 until numSamples) {
+                val t = i.toDouble() / sampleRate
+                // 800Hz sine wave with fast decay
+                val amplitude = (Short.MAX_VALUE * 0.6 * Math.exp(-t * 80.0)).toInt()
+                buffer[i] = (amplitude * Math.sin(2.0 * Math.PI * 800.0 * t)).toInt().toShort()
+            }
+            val track = AudioTrack(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .build(),
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build(),
+                numSamples * 2,
+                AudioTrack.MODE_STATIC,
+                sampleRate
+            )
+            track.write(buffer, 0, numSamples)
+            track.play()
+            track.release()
+        } catch (e: Exception) {
+            // Silently ignore sound errors
+        }
+    }
+
+    // Collect tick events and play sound
+    LaunchedEffect(Unit) {
+        viewModel.tickEvent.collect {
+            playTickSound()
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -116,6 +160,30 @@ fun TomatoScreen(
                                 Spacer(Modifier.width(8.dp))
                                 Text("重置")
                             }
+                        }
+                    }
+
+                    if (uiState.state != TomatoState.IDLE) {
+                        // Tick sound toggle during active timer
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("嘀嗒声 ", style = MaterialTheme.typography.bodyMedium)
+                            Switch(
+                                checked = uiState.isTickSoundEnabled,
+                                onCheckedChange = { viewModel.toggleTickSound() },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Tomato,
+                                    checkedTrackColor = TomatoLight
+                                )
+                            )
+                            Text(
+                                text = if (uiState.isTickSoundEnabled) "🔊" else "🔇",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
                         }
                     }
 

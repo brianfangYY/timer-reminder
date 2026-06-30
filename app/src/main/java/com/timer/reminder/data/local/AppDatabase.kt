@@ -11,16 +11,14 @@ import com.timer.reminder.data.local.entity.*
     entities = [
         ReminderEntity::class,
         TomatoRecordEntity::class,
-        AlarmEntity::class,
         TaskEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun reminderDao(): ReminderDao
     abstract fun tomatoRecordDao(): TomatoRecordDao
-    abstract fun alarmDao(): AlarmDao
     abstract fun taskDao(): TaskDao
 
     companion object {
@@ -28,6 +26,12 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE alarms ADD COLUMN linkedTaskId INTEGER DEFAULT NULL")
                 db.execSQL("ALTER TABLE reminders ADD COLUMN linkedTaskId INTEGER DEFAULT NULL")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS alarms")
             }
         }
     }

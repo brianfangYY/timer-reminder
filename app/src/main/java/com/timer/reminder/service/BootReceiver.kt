@@ -10,8 +10,8 @@ class BootReceiver : BroadcastReceiver() {
             // On boot, recreate notification channels
             NotificationHelper.createNotificationChannels(context)
 
-            // TODO: In a production app, reload all active alarms from the database
-            // and re-schedule them using AlarmScheduler
+            // TODO: In a production app, reload all active reminders from the database
+            // and re-schedule them
         }
     }
 }

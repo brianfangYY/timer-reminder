@@ -23,7 +23,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "timer_reminder_db"
         )
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .build()
     }
 
@@ -32,9 +32,6 @@ object DatabaseModule {
 
     @Provides
     fun provideTomatoRecordDao(database: AppDatabase): TomatoRecordDao = database.tomatoRecordDao()
-
-    @Provides
-    fun provideAlarmDao(database: AppDatabase): AlarmDao = database.alarmDao()
 
     @Provides
     fun provideTaskDao(database: AppDatabase): TaskDao = database.taskDao()
