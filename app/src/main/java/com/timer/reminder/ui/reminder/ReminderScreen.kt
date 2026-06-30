@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.timer.reminder.ui.common.TaskSelectionDialog
 import com.timer.reminder.ui.theme.*
 import com.timer.reminder.util.TimeUtils
 import java.util.*
@@ -24,10 +25,13 @@ fun ReminderScreen(
     viewModel: ReminderViewModel = hiltViewModel()
 ) {
     val reminders by viewModel.reminders.collectAsState()
+    val pendingTasks by viewModel.pendingTasks.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var titleInput by remember { mutableStateOf("") }
     var descriptionInput by remember { mutableStateOf("") }
     var selectedTimeMillis by remember { mutableStateOf(System.currentTimeMillis() + 3600000) }
+    var linkedTaskId by remember { mutableStateOf<Long?>(null) }
+    var showTaskDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Scaffold(
@@ -35,7 +39,13 @@ fun ReminderScreen(
             TopAppBar(
                 title = { Text("提醒", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { showAddDialog = true }) {
+                    IconButton(onClick = {
+                        titleInput = ""
+                        descriptionInput = ""
+                        linkedTaskId = null
+                        selectedTimeMillis = System.currentTimeMillis() + 3600000
+                        showAddDialog = true
+                    }) {
                         Icon(Icons.Filled.Add, contentDescription = "添加提醒")
                     }
                 }
@@ -70,6 +80,9 @@ fun ReminderScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(reminders, key = { it.id }) { reminder ->
+                    // Find linked task name
+                    val linkedTask = pendingTasks.find { it.id == reminder.linkedTaskId }
+
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = CardBackground)
@@ -100,6 +113,13 @@ fun ReminderScreen(
                                         color = TextSecondary
                                     )
                                 }
+                                if (linkedTask != null) {
+                                    Text(
+                                        text = "📎 ${linkedTask.title}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TaskGreen
+                                    )
+                                }
                                 Text(
                                     text = TimeUtils.formatDateTime(reminder.triggerAtMillis),
                                     style = MaterialTheme.typography.bodySmall,
@@ -120,6 +140,7 @@ fun ReminderScreen(
         }
     }
 
+    // Add reminder dialog
     if (showAddDialog) {
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
@@ -141,7 +162,7 @@ fun ReminderScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = {
                             val cal = Calendar.getInstance()
@@ -164,13 +185,26 @@ fun ReminderScreen(
                     ) {
                         Text("选择时间: ${TimeUtils.formatTime(selectedTimeMillis)}")
                     }
+                    Spacer(Modifier.height(8.dp))
+                    // Task binding button
+                    OutlinedButton(
+                        onClick = { showTaskDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val linkedTask = pendingTasks.find { it.id == linkedTaskId }
+                        if (linkedTask != null) {
+                            Text("📎 绑定任务: ${linkedTask.title}")
+                        } else {
+                            Text("绑定任务（可选）")
+                        }
+                    }
                 }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         if (titleInput.isNotBlank()) {
-                            viewModel.addReminder(titleInput, descriptionInput, selectedTimeMillis)
+                            viewModel.addReminder(titleInput, descriptionInput, selectedTimeMillis, linkedTaskId)
                             showAddDialog = false
                             titleInput = ""
                             descriptionInput = ""
@@ -181,6 +215,16 @@ fun ReminderScreen(
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) { Text("取消") }
             }
+        )
+    }
+
+    // Task selection dialog
+    if (showTaskDialog) {
+        TaskSelectionDialog(
+            tasks = pendingTasks,
+            selectedTaskId = linkedTaskId,
+            onSelect = { id -> linkedTaskId = id },
+            onDismiss = { showTaskDialog = false }
         )
     }
 }

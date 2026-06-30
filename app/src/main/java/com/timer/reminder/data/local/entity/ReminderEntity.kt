@@ -13,5 +13,6 @@ data class ReminderEntity(
     val isRepeating: Boolean = false,
     val repeatIntervalMinutes: Long = 0,
     val isEnabled: Boolean = true,
+    val linkedTaskId: Long? = null,
     val createdAt: Long = System.currentTimeMillis()
 )

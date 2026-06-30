@@ -18,6 +18,7 @@ import com.timer.reminder.ui.reminder.ReminderScreen
 import com.timer.reminder.ui.tomato.TomatoScreen
 import com.timer.reminder.ui.alarm.AlarmScreen
 import com.timer.reminder.ui.task.TaskScreen
+import com.timer.reminder.ui.about.AboutScreen
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     data object Home : Screen("home", "首页", Icons.Filled.Home)
@@ -25,6 +26,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     data object Tomato : Screen("tomato", "番茄钟", Icons.Filled.Timer)
     data object Alarm : Screen("alarm", "闹钟", Icons.Filled.Alarm)
     data object Task : Screen("task", "任务", Icons.Filled.CheckCircle)
+    data object About : Screen("about", "关于", Icons.Filled.Info)
 }
 
 val bottomNavItems = listOf(
@@ -74,6 +76,7 @@ fun AppNavGraph() {
             composable(Screen.Tomato.route) { TomatoScreen() }
             composable(Screen.Alarm.route) { AlarmScreen() }
             composable(Screen.Task.route) { TaskScreen() }
+            composable(Screen.About.route) { AboutScreen(onBack = { navController.popBackStack() }) }
         }
     }
 }

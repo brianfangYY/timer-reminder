@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.timer.reminder.ui.common.TaskSelectionDialog
 import com.timer.reminder.ui.theme.*
 import java.util.*
 
@@ -23,10 +24,13 @@ fun AlarmScreen(
     viewModel: AlarmViewModel = hiltViewModel()
 ) {
     val alarms by viewModel.alarms.collectAsState()
+    val pendingTasks by viewModel.pendingTasks.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedHour by remember { mutableIntStateOf(8) }
     var selectedMinute by remember { mutableIntStateOf(0) }
     var alarmLabel by remember { mutableStateOf("") }
+    var linkedTaskId by remember { mutableStateOf<Long?>(null) }
+    var showTaskDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Scaffold(
@@ -39,6 +43,7 @@ fun AlarmScreen(
                         selectedHour = now.get(Calendar.HOUR_OF_DAY)
                         selectedMinute = now.get(Calendar.MINUTE)
                         alarmLabel = ""
+                        linkedTaskId = null
                         showAddDialog = true
                     }) {
                         Icon(Icons.Filled.Add, contentDescription = "添加闹钟")
@@ -75,6 +80,9 @@ fun AlarmScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(alarms, key = { it.id }) { alarm ->
+                    // Find linked task name
+                    val linkedTask = pendingTasks.find { it.id == alarm.linkedTaskId }
+
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
@@ -113,6 +121,13 @@ fun AlarmScreen(
                                         color = TextSecondary
                                     )
                                 }
+                                if (linkedTask != null) {
+                                    Text(
+                                        text = "📎 ${linkedTask.title}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TaskGreen
+                                    )
+                                }
                                 if (alarm.repeatDays.isNotEmpty()) {
                                     val days = alarm.repeatDays.split(",")
                                         .map { dayNumberToName(it.toIntOrNull() ?: 0) }
@@ -137,6 +152,7 @@ fun AlarmScreen(
         }
     }
 
+    // Add alarm dialog
     if (showAddDialog) {
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
@@ -150,7 +166,7 @@ fun AlarmScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = {
                             TimePickerDialog(
@@ -172,17 +188,40 @@ fun AlarmScreen(
                             )
                         )
                     }
+                    Spacer(Modifier.height(8.dp))
+                    // Task binding button
+                    OutlinedButton(
+                        onClick = { showTaskDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val linkedTask = pendingTasks.find { it.id == linkedTaskId }
+                        if (linkedTask != null) {
+                            Text("📎 绑定任务: ${linkedTask.title}")
+                        } else {
+                            Text("绑定任务（可选）")
+                        }
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.addAlarm(selectedHour, selectedMinute, alarmLabel)
+                    viewModel.addAlarm(selectedHour, selectedMinute, alarmLabel, linkedTaskId = linkedTaskId)
                     showAddDialog = false
                 }) { Text("确定") }
             },
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) { Text("取消") }
             }
+        )
+    }
+
+    // Task selection dialog
+    if (showTaskDialog) {
+        TaskSelectionDialog(
+            tasks = pendingTasks,
+            selectedTaskId = linkedTaskId,
+            onSelect = { id -> linkedTaskId = id },
+            onDismiss = { showTaskDialog = false }
         )
     }
 }

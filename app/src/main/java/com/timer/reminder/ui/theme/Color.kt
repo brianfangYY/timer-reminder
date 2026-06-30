@@ -17,7 +17,7 @@ val TaskGreen = Color(0xFF32CD32)
 val TaskGreenLight = Color(0xFFE8FFE8)
 
 // Background & Surface
-val Background = Color(0xFFFFF8F0)
+val Background = Color(0xFFE8F4FD)
 val Surface = Color(0xFFFFFFFF)
 val CardBackground = Color(0xFFFFF5EE)
 val DialogBackground = Color(0xFFFFFFFA)

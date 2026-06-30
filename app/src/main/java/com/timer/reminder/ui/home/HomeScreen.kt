@@ -31,12 +31,28 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Text(
-                text = "⏰ 时间管理器",
-                style = MaterialTheme.typography.headlineLarge,
-                color = TextPrimary,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "⏰ 时间管理器",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = TextPrimary
+                )
+                IconButton(
+                    onClick = { navController.navigate("about") }
+                ) {
+                    Icon(
+                        Icons.Filled.Info,
+                        contentDescription = "关于",
+                        tint = TextSecondary
+                    )
+                }
+            }
         }
 
         // Quick stats row

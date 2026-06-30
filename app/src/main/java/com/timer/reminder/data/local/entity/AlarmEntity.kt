@@ -13,5 +13,6 @@ data class AlarmEntity(
     val isEnabled: Boolean = true,
     val repeatDays: String = "", // "1,2,3,4,5,6,7" for Mon-Sun
     val useVibration: Boolean = true,
+    val linkedTaskId: Long? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
