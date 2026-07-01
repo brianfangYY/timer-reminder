@@ -14,10 +14,40 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.timer.reminder.data.local.entity.ReminderEntity
 import com.timer.reminder.ui.common.TaskSelectionDialog
 import com.timer.reminder.ui.theme.*
 import com.timer.reminder.util.TimeUtils
 import java.util.*
+
+/** Repeat type options shown in the add dialog */
+private val REPEAT_OPTIONS = listOf(
+    "none"    to "仅一次",
+    "daily"   to "每天",
+    "workdays" to "工作日 (周一~周五)",
+    "weekly"  to "每周",
+    "monthly" to "每月"
+)
+
+/** Day-of-week names (Calendar.DAY_OF_WEEK value -> Chinese name) */
+private val DOW_NAMES = mapOf(
+    Calendar.MONDAY    to "周一",
+    Calendar.TUESDAY   to "周二",
+    Calendar.WEDNESDAY to "周三",
+    Calendar.THURSDAY  to "周四",
+    Calendar.FRIDAY    to "周五",
+    Calendar.SATURDAY  to "周六",
+    Calendar.SUNDAY    to "周日"
+)
+
+/** All 7 day-of-week values in order (Mon..Sun) */
+private val ALL_DOW = listOf(
+    Calendar.MONDAY, Calendar.TUESDAY, Calendar.WEDNESDAY,
+    Calendar.THURSDAY, Calendar.FRIDAY, Calendar.SATURDAY, Calendar.SUNDAY
+)
+
+/** Common day-of-month options for monthly repeat */
+private val DOM_OPTIONS = listOf(1, 5, 10, 15, 20, 25, 28)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,11 +57,20 @@ fun ReminderScreen(
     val reminders by viewModel.reminders.collectAsState()
     val pendingTasks by viewModel.pendingTasks.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
+
+    // Add-dialog state
     var titleInput by remember { mutableStateOf("") }
     var descriptionInput by remember { mutableStateOf("") }
     var selectedTimeMillis by remember { mutableStateOf(System.currentTimeMillis() + 3600000) }
     var linkedTaskId by remember { mutableStateOf<Long?>(null) }
     var showTaskDialog by remember { mutableStateOf(false) }
+
+    // Repeat state
+    var repeatType by remember { mutableStateOf("none") }
+    var selectedDaysOfWeek by remember { mutableStateOf(setOf<Int>()) }
+    var selectedDaysOfMonth by remember { mutableStateOf(setOf(1, 15)) }
+    var repeatTypeExpanded by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
 
     Scaffold(
@@ -44,6 +83,9 @@ fun ReminderScreen(
                         descriptionInput = ""
                         linkedTaskId = null
                         selectedTimeMillis = System.currentTimeMillis() + 3600000
+                        repeatType = "none"
+                        selectedDaysOfWeek = emptySet()
+                        selectedDaysOfMonth = setOf(1, 15)
                         showAddDialog = true
                     }) {
                         Icon(Icons.Filled.Add, contentDescription = "添加提醒")
@@ -80,8 +122,8 @@ fun ReminderScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(reminders, key = { it.id }) { reminder ->
-                    // Find linked task name
                     val linkedTask = pendingTasks.find { it.id == reminder.linkedTaskId }
+                    val repeatLabel = reminder.getRepeatLabel()
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -113,6 +155,13 @@ fun ReminderScreen(
                                         color = TextSecondary
                                     )
                                 }
+                                if (repeatLabel != "仅一次") {
+                                    Text(
+                                        text = "🔄 $repeatLabel",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Tomato
+                                    )
+                                }
                                 if (linkedTask != null) {
                                     Text(
                                         text = "📎 ${linkedTask.title}",
@@ -140,21 +189,24 @@ fun ReminderScreen(
         }
     }
 
-    // Add reminder dialog
+    // ── Add reminder dialog ──
     if (showAddDialog) {
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
             title = { Text("添加提醒") },
             text = {
-                Column {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Title
                     OutlinedTextField(
                         value = titleInput,
                         onValueChange = { titleInput = it },
-                        label = { Text("标题") },
+                        label = { Text("提醒标题") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(8.dp))
+
+                    // Description
                     OutlinedTextField(
                         value = descriptionInput,
                         onValueChange = { descriptionInput = it },
@@ -163,16 +215,19 @@ fun ReminderScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(8.dp))
+
+                    // Time picker
                     OutlinedButton(
                         onClick = {
-                            val cal = Calendar.getInstance()
                             val now = Calendar.getInstance()
                             TimePickerDialog(
                                 context,
                                 { _, hour, minute ->
+                                    val cal = Calendar.getInstance()
                                     cal.set(Calendar.HOUR_OF_DAY, hour)
                                     cal.set(Calendar.MINUTE, minute)
                                     cal.set(Calendar.SECOND, 0)
+                                    cal.set(Calendar.MILLISECOND, 0)
                                     if (cal.before(now)) cal.add(Calendar.DAY_OF_YEAR, 1)
                                     selectedTimeMillis = cal.timeInMillis
                                 },
@@ -183,18 +238,144 @@ fun ReminderScreen(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("选择时间: ${TimeUtils.formatTime(selectedTimeMillis)}")
+                        Icon(Icons.Filled.Schedule, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("时间: ${TimeUtils.formatTime(selectedTimeMillis)}")
                     }
                     Spacer(Modifier.height(8.dp))
-                    // Task binding button
+
+                    // ── Repeat type dropdown ──
+                    Text(
+                        text = "重复方式",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = TextPrimary,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    ExposedDropdownMenuBox(
+                        expanded = repeatTypeExpanded,
+                        onExpandedChange = { repeatTypeExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = REPEAT_OPTIONS.first { it.first == repeatType }.second,
+                            onValueChange = {},
+                            readOnly = true,
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = repeatTypeExpanded) },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                unfocusedBorderColor = TextHint.copy(alpha = 0.5f)
+                            )
+                        )
+                        ExposedDropdownMenu(
+                            expanded = repeatTypeExpanded,
+                            onDismissRequest = { repeatTypeExpanded = false }
+                        ) {
+                            REPEAT_OPTIONS.forEach { (value, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        repeatType = value
+                                        repeatTypeExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+
+                    // ── Weekly: day-of-week picker ──
+                    if (repeatType == "weekly") {
+                        Text(
+                            text = "选择星期几",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = TextPrimary,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            ALL_DOW.forEach { dow ->
+                                val isSelected = dow in selectedDaysOfWeek
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedDaysOfWeek = if (isSelected) {
+                                            selectedDaysOfWeek - dow
+                                        } else {
+                                            selectedDaysOfWeek + dow
+                                        }
+                                    },
+                                    label = {
+                                        Text(
+                                            DOW_NAMES[dow] ?: "?",
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Tomato.copy(alpha = 0.15f),
+                                        selectedLabelColor = Tomato
+                                    )
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    // ── Monthly: day-of-month picker ──
+                    if (repeatType == "monthly") {
+                        Text(
+                            text = "选择日期（每月几号）",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = TextPrimary,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        // Common days as chips
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            DOM_OPTIONS.forEach { dom ->
+                                val isSelected = dom in selectedDaysOfMonth
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedDaysOfMonth = if (isSelected) {
+                                            selectedDaysOfMonth - dom
+                                        } else {
+                                            selectedDaysOfMonth + dom
+                                        }
+                                    },
+                                    label = {
+                                        Text(
+                                            "${dom}号",
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Tomato.copy(alpha = 0.15f),
+                                        selectedLabelColor = Tomato
+                                    )
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    // ── Task binding ──
                     OutlinedButton(
                         onClick = { showTaskDialog = true },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         val linkedTask = pendingTasks.find { it.id == linkedTaskId }
                         if (linkedTask != null) {
-                            Text("📎 绑定任务: ${linkedTask.title}")
+                            Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("绑定: ${linkedTask.title}")
                         } else {
+                            Icon(Icons.Filled.LinkOff, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
                             Text("绑定任务（可选）")
                         }
                     }
@@ -204,13 +385,46 @@ fun ReminderScreen(
                 TextButton(
                     onClick = {
                         if (titleInput.isNotBlank()) {
-                            viewModel.addReminder(titleInput, descriptionInput, selectedTimeMillis, linkedTaskId)
+                            when (repeatType) {
+                                "weekly" -> {
+                                    if (selectedDaysOfWeek.isEmpty()) return@TextButton
+                                    val dowJson = selectedDaysOfWeek.joinToString(",", "[", "]")
+                                    viewModel.addReminder(
+                                        titleInput, descriptionInput, selectedTimeMillis,
+                                        repeatType = "weekly",
+                                        repeatDaysOfWeek = dowJson,
+                                        linkedTaskId = linkedTaskId
+                                    )
+                                }
+                                "monthly" -> {
+                                    if (selectedDaysOfMonth.isEmpty()) return@TextButton
+                                    val domJson = selectedDaysOfMonth.joinToString(",", "[", "]")
+                                    viewModel.addReminder(
+                                        titleInput, descriptionInput, selectedTimeMillis,
+                                        repeatType = "monthly",
+                                        repeatDaysOfMonth = domJson,
+                                        linkedTaskId = linkedTaskId
+                                    )
+                                }
+                                else -> {
+                                    viewModel.addReminder(
+                                        titleInput, descriptionInput, selectedTimeMillis,
+                                        repeatType = repeatType,
+                                        linkedTaskId = linkedTaskId
+                                    )
+                                }
+                            }
                             showAddDialog = false
                             titleInput = ""
                             descriptionInput = ""
                         }
+                    },
+                    enabled = titleInput.isNotBlank() && when (repeatType) {
+                        "weekly" -> selectedDaysOfWeek.isNotEmpty()
+                        "monthly" -> selectedDaysOfMonth.isNotEmpty()
+                        else -> true
                     }
-                ) { Text("确定") }
+                ) { Text("添加") }
             },
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) { Text("取消") }

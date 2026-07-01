@@ -29,18 +29,60 @@ class ReminderViewModel @Inject constructor(
         .getPendingTasks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addReminder(title: String, description: String, triggerAtMillis: Long, linkedTaskId: Long? = null) {
+    /**
+     * Add a new reminder with repeat schedule support.
+     *
+     * @param title reminder title
+     * @param description optional description
+     * @param triggerAtMillis initial/one-shot trigger time
+     * @param repeatType "none" | "daily" | "workdays" | "weekly" | "monthly"
+     * @param repeatDaysOfWeek e.g. "[2,4,6]" for Mon/Wed/Fri (Calendar.DAY_OF_WEEK values)
+     * @param repeatDaysOfMonth e.g. "[1,15]" for 1st and 15th of each month
+     * @param linkedTaskId optional task to link
+     */
+    fun addReminder(
+        title: String,
+        description: String = "",
+        triggerAtMillis: Long,
+        repeatType: String = "none",
+        repeatDaysOfWeek: String = "[]",
+        repeatDaysOfMonth: String = "[]",
+        linkedTaskId: Long? = null
+    ) {
         viewModelScope.launch {
+            val isRepeating = repeatType != "none"
+            // For repeating reminders, compute the first actual trigger
+            val firstTrigger = if (isRepeating) {
+                val tempReminder = ReminderEntity(
+                    title = title,
+                    description = description,
+                    triggerAtMillis = triggerAtMillis,
+                    repeatType = repeatType,
+                    repeatDaysOfWeek = repeatDaysOfWeek,
+                    repeatDaysOfMonth = repeatDaysOfMonth,
+                    isRepeating = true,
+                    linkedTaskId = linkedTaskId
+                )
+                ReminderScheduler.computeNextTrigger(tempReminder) ?: triggerAtMillis
+            } else {
+                triggerAtMillis
+            }
+
             val id = reminderRepository.insert(
                 ReminderEntity(
                     title = title,
                     description = description,
-                    triggerAtMillis = triggerAtMillis,
+                    triggerAtMillis = firstTrigger,
+                    isRepeating = isRepeating,
+                    repeatType = repeatType,
+                    repeatDaysOfWeek = repeatDaysOfWeek,
+                    repeatDaysOfMonth = repeatDaysOfMonth,
                     linkedTaskId = linkedTaskId
                 )
             )
-            // Schedule the reminder alarm
-            ReminderScheduler.schedule(context, id, triggerAtMillis, title, description)
+
+            // Schedule the alarm (for repeating types, this schedules the first occurrence)
+            ReminderScheduler.schedule(context, id, firstTrigger, title, description, linkedTaskId)
         }
     }
 

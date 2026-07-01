@@ -7,7 +7,11 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.timer.reminder.data.local.AppDatabase
 import com.timer.reminder.ui.reminder.ReminderAlertActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -16,6 +20,21 @@ class AlarmReceiver : BroadcastReceiver() {
         val message = intent.getStringExtra("message") ?: "时间到了！"
         val type = intent.getStringExtra("type") ?: "提醒"
         val linkedTaskId = intent.getLongExtra("linked_task_id", -1L)
+
+        // 如果是周期性提醒，重新计算下次触发时间
+        if (reminderId > 0) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val db = AppDatabase.getInstance(context)
+                    val reminder = db.reminderDao().getReminderById(reminderId)
+                    if (reminder != null && reminder.isEnabled && reminder.repeatType != "none") {
+                        ReminderScheduler.rescheduleAfterFiring(context, reminder)
+                    }
+                } catch (_: Exception) {
+                    // Silently ignore DB errors on re-schedule
+                }
+            }
+        }
 
         // 启动全屏提醒 Activity
         val fullIntent = Intent(context, ReminderAlertActivity::class.java).apply {
@@ -32,7 +51,12 @@ class AlarmReceiver : BroadcastReceiver() {
             showUrgentNotification(context, reminderId, title, message, fullIntent)
         }
 
-        context.startActivity(fullIntent)
+        try {
+            context.startActivity(fullIntent)
+        } catch (_: Exception) {
+            // Fallback: just show notification if Activity launch fails
+            showUrgentNotification(context, reminderId, title, message, fullIntent)
+        }
     }
 
     private fun showUrgentNotification(
