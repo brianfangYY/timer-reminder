@@ -36,7 +36,7 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun collectTomatoCount() {
-        tomatoRepository.getCompletedCount().onEach { count ->
+        tomatoRepository.getTodayCompletedCount().onEach { count ->
             _uiState.update { it.copy(todayTomatoCount = count) }
         }.launchIn(viewModelScope)
     }

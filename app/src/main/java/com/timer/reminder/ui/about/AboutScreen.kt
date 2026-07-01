@@ -74,7 +74,7 @@ fun AboutScreen(
 
             // Copyright
             Text(
-                text = "© 2026 brianfang. All rights reserved.",
+                text = "© 2026 Charlotte Fang 方蕾杨柳. All rights reserved.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 textAlign = TextAlign.Center

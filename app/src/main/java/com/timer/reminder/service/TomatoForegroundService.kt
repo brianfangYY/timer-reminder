@@ -5,14 +5,17 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.CountDownTimer
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.timer.reminder.MainActivity
+import kotlinx.coroutines.*
 
 class TomatoForegroundService : Service() {
 
-    private var timer: CountDownTimer? = null
+    private var timerJob: Job? = null
+    private var serviceScope: CoroutineScope? = null
+    private var endElapsedMs: Long = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -22,15 +25,32 @@ class TomatoForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        // Handle START_STICKY recreation with null intent — no timer to resume
+        if (intent == null) {
+            if (endElapsedMs == 0L) {
+                // Nothing to do, stop cleanly
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            // Timer was running — keep alive, the tick loop will self-terminate
+            return START_STICKY
+        }
+
+        when (intent.action) {
             ACTION_START -> {
                 val durationSeconds = intent.getLongExtra(EXTRA_DURATION_SECONDS, 25 * 60L)
                 val phase = intent.getStringExtra(EXTRA_PHASE) ?: "focus"
+
+                // Use elapsedRealtime for the absolute deadline
+                endElapsedMs = SystemClock.elapsedRealtime() + (durationSeconds * 1000L)
+
                 TomatoStateHolder.setPhase(phase)
                 TomatoStateHolder.setServiceRunning(true)
+                TomatoStateHolder.updateTime(durationSeconds)
 
-                startForeground(NOTIFICATION_ID, createNotification("准备中...", phase))
-                startTimer(durationSeconds, phase)
+                startForeground(NOTIFICATION_ID, createNotification(formatTime(durationSeconds), phase))
+                startTimer(phase)
             }
             ACTION_UPDATE_TIME -> {
                 // Update notification with current time from ViewModel
@@ -48,41 +68,53 @@ class TomatoForegroundService : Service() {
         return START_STICKY
     }
 
-    private fun startTimer(totalSeconds: Long, phase: String) {
-        timer?.cancel()
-        TomatoStateHolder.updateTime(totalSeconds)
+    private fun startTimer(phase: String) {
+        stopTimer()
 
-        timer = object : CountDownTimer(totalSeconds * 1000, 1000) {
-            override fun onTick(millisUntilFinished: Long) {
-                val remaining = millisUntilFinished / 1000
-                TomatoStateHolder.updateTime(remaining)
-                updateNotification(remaining, phase)
+        serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+        timerJob = serviceScope?.launch {
+            while (isActive) {
+                val remainingMs = endElapsedMs - SystemClock.elapsedRealtime()
+                if (remainingMs <= 0) {
+                    // Timer expired
+                    withContext(Dispatchers.Main) {
+                        TomatoStateHolder.updateTime(0)
+                        TomatoStateHolder.onTimerComplete()
+
+                        val completionNotification = NotificationCompat.Builder(
+                            this@TomatoForegroundService,
+                            NotificationHelper.CHANNEL_TOMATO
+                        )
+                            .setContentTitle("🍅 番茄钟完成！")
+                            .setContentText(if (phase == "focus") "专注时间结束" else "休息时间结束")
+                            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                            .setAutoCancel(true)
+                            .setPriority(NotificationCompat.PRIORITY_HIGH)
+                            .build()
+
+                        val notificationManager = getSystemService(NotificationManager::class.java)
+                        notificationManager.notify(NOTIFICATION_ID, completionNotification)
+
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    }
+                    break
+                }
+
+                val remainingSec = remainingMs / 1000L
+                TomatoStateHolder.updateTime(remainingSec)
+                updateNotification(remainingSec, phase)
+
+                delay(1000L)
             }
-
-            override fun onFinish() {
-                TomatoStateHolder.updateTime(0)
-                TomatoStateHolder.onTimerComplete()
-
-                val completionNotification = NotificationCompat.Builder(this@TomatoForegroundService, NotificationHelper.CHANNEL_TOMATO)
-                    .setContentTitle("🍅 番茄钟完成！")
-                    .setContentText(if (phase == "focus") "专注时间结束" else "休息时间结束")
-                    .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                    .setAutoCancel(true)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .build()
-
-                val notificationManager = getSystemService(NotificationManager::class.java)
-                notificationManager.notify(NOTIFICATION_ID, completionNotification)
-
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
-        }.start()
+        }
     }
 
     private fun stopTimer() {
-        timer?.cancel()
-        timer = null
+        timerJob?.cancel()
+        timerJob = null
+        serviceScope?.cancel()
+        serviceScope = null
     }
 
     private fun updateNotification(remainingSeconds: Long, phase: String) {
@@ -141,6 +173,8 @@ class TomatoForegroundService : Service() {
         TomatoStateHolder.onTimerComplete()
         super.onDestroy()
     }
+
+
 
     companion object {
         const val NOTIFICATION_ID = 1004

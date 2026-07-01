@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 interface TomatoRepository {
     fun getAllRecords(): Flow<List<TomatoRecordEntity>>
     fun getCompletedCount(): Flow<Int>
+    fun getTodayCompletedCount(): Flow<Int>
     suspend fun insert(record: TomatoRecordEntity): Long
     suspend fun deleteById(id: Long)
 }

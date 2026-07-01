@@ -12,6 +12,13 @@ interface TomatoRecordDao {
     @Query("SELECT COUNT(*) FROM tomato_records WHERE completed = 1")
     fun getCompletedCount(): Flow<Int>
 
+    /** Count completed records from today (start of day to end of day) */
+    @Query("""
+        SELECT COUNT(*) FROM tomato_records 
+        WHERE completed = 1 AND startTime >= :dayStart AND startTime < :dayEnd
+    """)
+    fun getTodayCompletedCount(dayStart: Long, dayEnd: Long): Flow<Int>
+
     @Query("SELECT * FROM tomato_records WHERE id = :id")
     suspend fun getRecordById(id: Long): TomatoRecordEntity?
 
